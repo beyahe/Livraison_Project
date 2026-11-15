@@ -6,12 +6,13 @@ from sqlalchemy.orm import Session
 import asyncio
 import random
 
-from app.database import SessionLocal
+from app.database import get_db
 
 from app.auth import (
     hash_password,
     verify_password,
-    create_access_token
+    create_access_token,
+    get_current_user
 )
 
 from app.models.user import User
@@ -38,17 +39,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# =========================================================
-# DATABASE SESSION
-# =========================================================
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 # =========================================================
 # HOME
@@ -111,6 +101,15 @@ def login(
             "username": user.username,
             "role": user.role
         }
+    }
+
+@app.get("/me")
+def read_me(current_user: User = Depends(get_current_user)):
+    # Returns the user who owns the token
+    return {
+        "id": current_user.id,
+        "username": current_user.username,
+        "role": current_user.role,
     }
 
 # =========================================================
