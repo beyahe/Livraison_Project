@@ -151,7 +151,7 @@ def update_driver_location(
     driver = db.query(Driver).filter(Driver.id == driver_id).first()
 
     if not driver:
-        return {"error": "Driver not found"}
+        raise HTTPException(status_code=404, detail="Driver not found")
 
     driver.latitude = latitude
     driver.longitude = longitude
@@ -167,7 +167,7 @@ def get_driver_location(driver_id: int, db: Session = Depends(get_db)):
     driver = db.query(Driver).filter(Driver.id == driver_id).first()
 
     if not driver:
-        return {"error": "Driver not found"}
+        raise HTTPException(status_code=404, detail="Driver not found")
 
     return {
         "driver_id": driver.id,
@@ -218,7 +218,14 @@ def delete_restaurant(restaurant_id: int, db: Session = Depends(get_db)):
     restaurant = db.query(Restaurant).filter(Restaurant.id == restaurant_id).first()
 
     if not restaurant:
-        return {"error": "Restaurant not found"}
+        raise HTTPException(status_code=404, detail="Restaurant not found")
+
+    # Cannot delete a restaurant that still has products or orders
+    if db.query(Product).filter(Product.restaurant_id == restaurant_id).first():
+        raise HTTPException(status_code=400, detail="Delete the restaurant's products first")
+
+    if db.query(Order).filter(Order.restaurant_id == restaurant_id).first():
+        raise HTTPException(status_code=400, detail="This restaurant has orders and cannot be deleted")
 
     db.delete(restaurant)
     db.commit()
@@ -240,7 +247,7 @@ def create_product(
     restaurant = db.query(Restaurant).filter(Restaurant.id == restaurant_id).first()
 
     if not restaurant:
-        return {"error": "Restaurant not found"}
+        raise HTTPException(status_code=404, detail="Restaurant not found")
 
     product = Product(
         name=name,
@@ -269,7 +276,11 @@ def delete_product(product_id: int, db: Session = Depends(get_db)):
     product = db.query(Product).filter(Product.id == product_id).first()
 
     if not product:
-        return {"error": "Product not found"}
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    # Cannot delete a product that is part of an order
+    if db.query(OrderItem).filter(OrderItem.product_id == product_id).first():
+        raise HTTPException(status_code=400, detail="This product is in orders and cannot be deleted")
 
     db.delete(product)
     db.commit()
@@ -411,7 +422,7 @@ def accept_order(order_id: int, db: Session = Depends(get_db)):
     order = db.query(Order).filter(Order.id == order_id).first()
 
     if not order:
-        return {"error": "Order not found"}
+        raise HTTPException(status_code=404, detail="Order not found")
 
     order.status = "accepted"
     order.driver_id = 1  # will be fixed in phase 3
@@ -426,7 +437,7 @@ def deliver_order(order_id: int, db: Session = Depends(get_db)):
     order = db.query(Order).filter(Order.id == order_id).first()
 
     if not order:
-        return {"error": "Order not found"}
+        raise HTTPException(status_code=404, detail="Order not found")
 
     order.status = "delivered"
 
@@ -444,12 +455,12 @@ def assign_driver(
     order = db.query(Order).filter(Order.id == order_id).first()
 
     if not order:
-        return {"error": "Order not found"}
+        raise HTTPException(status_code=404, detail="Order not found")
 
     driver = db.query(Driver).filter(Driver.id == driver_id).first()
 
     if not driver:
-        return {"error": "Driver not found"}
+        raise HTTPException(status_code=404, detail="Driver not found")
 
     order.driver_id = driver_id
 
@@ -463,15 +474,15 @@ def get_order_driver(order_id: int, db: Session = Depends(get_db)):
     order = db.query(Order).filter(Order.id == order_id).first()
 
     if not order:
-        return {"error": "Order not found"}
+        raise HTTPException(status_code=404, detail="Order not found")
 
     if not order.driver_id:
-        return {"error": "No driver assigned"}
+        raise HTTPException(status_code=404, detail="No driver assigned")
 
     driver = db.query(Driver).filter(Driver.id == order.driver_id).first()
 
     if not driver:
-        return {"error": "Driver not found"}
+        raise HTTPException(status_code=404, detail="Driver not found")
 
     return {
         "driver_id": driver.id,
