@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 import asyncio
 import random
 
-from app.database import engine, Base, SessionLocal
+from app.database import SessionLocal
 
 from app.auth import (
     hash_password,
@@ -19,10 +19,13 @@ from app.models.driver import Driver
 from app.models.restaurant import Restaurant
 from app.models.product import Product
 from app.models.order import Order
+from app.models.order_item import OrderItem
 
 # =========================================================
 # FASTAPI + CORS
 # =========================================================
+# Tables are created and changed by Alembic only
+# (alembic upgrade head), not here.
 
 app = FastAPI()
 
@@ -33,12 +36,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# =========================================================
-# CREATE TABLES
-# =========================================================
-
-Base.metadata.create_all(bind=engine)
 
 # =========================================================
 # DATABASE SESSION
