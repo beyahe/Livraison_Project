@@ -10,8 +10,8 @@ class OrderItemIn(BaseModel):
 
 
 # The full order sent by the app (JSON body)
+# The customer is NOT sent: the server takes it from the token
 class OrderCreate(BaseModel):
-    customer_name: str
     restaurant_id: int
     items: List[OrderItemIn]
     address: Optional[str] = None

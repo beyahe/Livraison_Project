@@ -56,7 +56,6 @@ def home():
 def register(
     username: str,
     password: str,
-    role: str = "customer",
     db: Session = Depends(get_db)
 ):
     existing_user = db.query(User).filter(User.username == username).first()
@@ -64,10 +63,12 @@ def register(
     if existing_user:
         return {"error": "Username already exists"}
 
+    # Public sign-up always creates a customer.
+    # Admins and drivers are created another way.
     new_user = User(
         username=username,
         password=hash_password(password),
-        role=role
+        role="customer"
     )
 
     db.add(new_user)
@@ -111,6 +112,32 @@ def read_me(current_user: User = Depends(get_current_user)):
         "username": current_user.username,
         "role": current_user.role,
     }
+
+
+@app.get("/me/orders")
+def read_my_orders(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    # Only the orders of the logged-in customer, newest first
+    orders = (
+        db.query(Order)
+        .filter(Order.customer_id == current_user.id)
+        .order_by(Order.id.desc())
+        .all()
+    )
+
+    return [
+        {
+            "id": order.id,
+            "restaurant_id": order.restaurant_id,
+            "total_price": order.total_price,
+            "status": order.status,
+            "driver_id": order.driver_id,
+            "created_at": order.created_at,
+        }
+        for order in orders
+    ]
 
 # =========================================================
 # DRIVERS
@@ -291,7 +318,11 @@ def delete_product(product_id: int, db: Session = Depends(get_db)):
 # =========================================================
 
 @app.post("/orders")
-def create_order(data: OrderCreate, db: Session = Depends(get_db)):
+def create_order(
+    data: OrderCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
 
     if not data.items:
         raise HTTPException(status_code=400, detail="Order must contain at least one product")
@@ -306,8 +337,10 @@ def create_order(data: OrderCreate, db: Session = Depends(get_db)):
     products = db.query(Product).filter(Product.id.in_(product_ids)).all()
     products_by_id = {p.id: p for p in products}
 
+    # The customer is the owner of the token, not a name sent by the app
     order = Order(
-        customer_name=data.customer_name,
+        customer_id=current_user.id,
+        customer_name=current_user.username,
         restaurant_id=data.restaurant_id,
         address=data.address,
         latitude=data.latitude,
