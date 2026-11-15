@@ -585,18 +585,19 @@ class _MainNavigationState
 
       body: screens[currentIndex],
 
-      bottomNavigationBar:
-      BottomNavigationBar(
+      bottomNavigationBar: BottomNavigationBar(
 
         currentIndex: currentIndex,
 
-        selectedItemColor:
-        Colors.orange,
+        // Keep all 4 buttons visible
+        type: BottomNavigationBarType.fixed,
+
+        selectedItemColor: Colors.orange,
+
+        unselectedItemColor: Colors.grey,
 
         onTap: (index) {
-
           setState(() {
-
             currentIndex = index;
           });
         },
@@ -1040,12 +1041,18 @@ class _CartPageState
 
     try {
 
+      // The token saved at login tells the server who the customer is
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString("token");
+
       // Send the products, the server computes the total price
       final response = await http.post(
         Uri.parse("${AppConfig.apiUrl}/orders"),
-        headers: {"Content-Type": "application/json"},
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer $token",
+        },
         body: jsonEncode({
-          "customer_name": "Abderrahmane",
           "restaurant_id": cart.first["restaurant_id"],
           "items": cart
               .map((item) => {
@@ -1059,6 +1066,17 @@ class _CartPageState
       final data = jsonDecode(response.body);
 
       if (!mounted) return;
+
+      if (response.statusCode == 401) {
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            backgroundColor: Colors.red,
+            content: Text("Session expired. Please log out and log in again."),
+          ),
+        );
+        return;
+      }
 
       if (response.statusCode == 200) {
 
@@ -1220,15 +1238,22 @@ class _OrdersPageState
 
     try {
 
-      final response = await http.get(
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString("token");
 
-        Uri.parse(
-          "${AppConfig.apiUrl}/orders",
-        ),
+      // Only the orders of the logged-in customer
+      final response = await http.get(
+        Uri.parse("${AppConfig.apiUrl}/me/orders"),
+        headers: {"Authorization": "Bearer $token"},
       );
 
-      orders =
-      jsonDecode(response.body);
+      if (response.statusCode == 200) {
+        orders = jsonDecode(response.body);
+      } else {
+        orders = [];
+      }
+
+      if (!mounted) return;
 
       setState(() {
 
