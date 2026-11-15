@@ -943,14 +943,40 @@ class _ProductsPageState
 
                 onPressed: () {
 
-                  cart.add({
+                  final restaurantId = widget.restaurant["id"];
 
-                    "name":
-                    product["name"],
+                  // One order = one restaurant (the backend checks this)
+                  if (cart.isNotEmpty &&
+                      cart.first["restaurant_id"] != restaurantId) {
 
-                    "price":
-                    product["price"],
-                  });
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        backgroundColor: Colors.red,
+                        content: Text(
+                          "Your cart has products from another restaurant. "
+                          "Checkout or clear the cart first.",
+                        ),
+                      ),
+                    );
+                    return;
+                  }
+
+                  // Same product already in the cart -> quantity + 1
+                  final index = cart.indexWhere(
+                    (item) => item["product_id"] == product["id"],
+                  );
+
+                  if (index >= 0) {
+                    cart[index]["quantity"] += 1;
+                  } else {
+                    cart.add({
+                      "product_id": product["id"],
+                      "restaurant_id": restaurantId,
+                      "name": product["name"],
+                      "price": product["price"],
+                      "quantity": 1,
+                    });
+                  }
 
                   ScaffoldMessenger.of(context)
                       .showSnackBar(
@@ -997,7 +1023,7 @@ class _CartPageState
 
     for (var item in cart) {
 
-      total += item["price"];
+      total += item["price"] * item["quantity"];
     }
 
     return total;
@@ -1005,39 +1031,57 @@ class _CartPageState
 
   Future<void> createOrder() async {
 
-    double total = getTotal();
+    if (cart.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Your cart is empty")),
+      );
+      return;
+    }
 
     try {
 
+      // Send the products, the server computes the total price
       final response = await http.post(
-
-        Uri.parse(
-
-          "${AppConfig.apiUrl}/orders"
-              "?customer_name=Abderrahmane"
-              "&total_price=$total",
-        ),
+        Uri.parse("${AppConfig.apiUrl}/orders"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "customer_name": "Abderrahmane",
+          "restaurant_id": cart.first["restaurant_id"],
+          "items": cart
+              .map((item) => {
+                    "product_id": item["product_id"],
+                    "quantity": item["quantity"],
+                  })
+              .toList(),
+        }),
       );
 
-      final data =
-      jsonDecode(response.body);
+      final data = jsonDecode(response.body);
 
-      if (data["message"] != null) {
+      if (!mounted) return;
+
+      if (response.statusCode == 200) {
 
         cart.clear();
 
         setState(() {});
 
-        ScaffoldMessenger.of(context)
-            .showSnackBar(
-
-          const SnackBar(
-
-            backgroundColor:
-            Colors.green,
-
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: Colors.green,
             content: Text(
-              "Order created successfully 🚀",
+              "Order #${data["order_id"]} created - "
+              "${data["total_price"]} MRU 🚀",
+            ),
+          ),
+        );
+      } else {
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: Colors.red,
+            content: Text(
+              data["detail"]?.toString() ?? "Order failed",
             ),
           ),
         );
@@ -1046,9 +1090,9 @@ class _CartPageState
 
     catch (e) {
 
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
+      if (!mounted) return;
 
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(e.toString()),
         ),
@@ -1063,6 +1107,17 @@ class _CartPageState
 
       appBar: AppBar(
         title: const Text("Cart"),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.delete_outline),
+            tooltip: "Clear cart",
+            onPressed: () {
+              setState(() {
+                cart.clear();
+              });
+            },
+          ),
+        ],
       ),
 
       body: Column(
@@ -1086,7 +1141,14 @@ class _CartPageState
                   Text(item["name"]),
 
                   subtitle: Text(
-                    "${item["price"]} MRU",
+                    "${item["quantity"]} x ${item["price"]} MRU",
+                  ),
+
+                  trailing: Text(
+                    "${item["price"] * item["quantity"]} MRU",
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 );
               },
