@@ -1,4 +1,5 @@
 from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
 from app.database import Base
@@ -31,3 +32,6 @@ class Order(Base):
     longitude = Column(Float, nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # The products inside this order (OrderItem rows)
+    items = relationship("OrderItem", cascade="all, delete-orphan")

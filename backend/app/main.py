@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, WebSocket
+from fastapi import FastAPI, Depends, WebSocket, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from sqlalchemy.orm import Session
@@ -20,6 +20,8 @@ from app.models.restaurant import Restaurant
 from app.models.product import Product
 from app.models.order import Order
 from app.models.order_item import OrderItem
+
+from app.schemas import OrderCreate
 
 # =========================================================
 # FASTAPI + CORS
@@ -279,17 +281,55 @@ def delete_product(product_id: int, db: Session = Depends(get_db)):
 # =========================================================
 
 @app.post("/orders")
-def create_order(
-    customer_name: str,
-    total_price: float,
-    db: Session = Depends(get_db)
-):
+def create_order(data: OrderCreate, db: Session = Depends(get_db)):
+
+    if not data.items:
+        raise HTTPException(status_code=400, detail="Order must contain at least one product")
+
+    restaurant = db.query(Restaurant).filter(Restaurant.id == data.restaurant_id).first()
+
+    if not restaurant:
+        raise HTTPException(status_code=404, detail="Restaurant not found")
+
+    # Load all requested products in one query
+    product_ids = [item.product_id for item in data.items]
+    products = db.query(Product).filter(Product.id.in_(product_ids)).all()
+    products_by_id = {p.id: p for p in products}
+
     order = Order(
-        customer_name=customer_name,
-        total_price=total_price,
+        customer_name=data.customer_name,
+        restaurant_id=data.restaurant_id,
+        address=data.address,
+        latitude=data.latitude,
+        longitude=data.longitude,
         status="pending",
-        driver_id=None
+        driver_id=None,
     )
+
+    total = 0
+
+    for item in data.items:
+        product = products_by_id.get(item.product_id)
+
+        if not product:
+            raise HTTPException(status_code=404, detail=f"Product {item.product_id} not found")
+
+        if product.restaurant_id != data.restaurant_id:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Product {product.id} does not belong to this restaurant",
+            )
+
+        if item.quantity < 1:
+            raise HTTPException(status_code=400, detail="Quantity must be at least 1")
+
+        # The price comes from the database, never from the app
+        order.items.append(
+            OrderItem(product_id=product.id, quantity=item.quantity, price=product.price)
+        )
+        total += product.price * item.quantity
+
+    order.total_price = total
 
     db.add(order)
     db.commit()
@@ -297,7 +337,8 @@ def create_order(
 
     return {
         "message": "Order created successfully",
-        "order_id": order.id
+        "order_id": order.id,
+        "total_price": order.total_price,
     }
 
 
@@ -325,6 +366,44 @@ def get_orders(db: Session = Depends(get_db)):
         })
 
     return result
+
+
+@app.get("/orders/{order_id}")
+def get_order(order_id: int, db: Session = Depends(get_db)):
+    order = db.query(Order).filter(Order.id == order_id).first()
+
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    # Product names for the items
+    product_ids = [i.product_id for i in order.items]
+    names = {}
+    if product_ids:
+        names = {
+            p.id: p.name
+            for p in db.query(Product).filter(Product.id.in_(product_ids))
+        }
+
+    return {
+        "id": order.id,
+        "customer_name": order.customer_name,
+        "restaurant_id": order.restaurant_id,
+        "address": order.address,
+        "status": order.status,
+        "total_price": order.total_price,
+        "driver_id": order.driver_id,
+        "created_at": order.created_at,
+        "items": [
+            {
+                "product_id": i.product_id,
+                "name": names.get(i.product_id),
+                "quantity": i.quantity,
+                "price": i.price,
+                "subtotal": i.price * i.quantity,
+            }
+            for i in order.items
+        ],
+    }
 
 
 @app.put("/orders/{order_id}/accept")
