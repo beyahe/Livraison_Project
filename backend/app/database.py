@@ -1,11 +1,22 @@
+import os
+from pathlib import Path
+from urllib.parse import quote_plus
+
+from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from urllib.parse import quote_plus
 
-password = quote_plus("Abderrahmane@1")
+# Read the backend/.env file
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
-DATABASE_URL = f"postgresql://beyahe:{password}@localhost/livraison"
+DB_USER = os.getenv("DB_USER")
+DB_PASSWORD = quote_plus(os.getenv("DB_PASSWORD", ""))
+DB_HOST = os.getenv("DB_HOST", "localhost")
+DB_PORT = os.getenv("DB_PORT", "5432")
+DB_NAME = os.getenv("DB_NAME")
+
+DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
 engine = create_engine(DATABASE_URL)
 
